@@ -314,9 +314,11 @@ namespace Librya
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:Librya"
         mc:Ignorable="d"
-        Title="AddEditBookWindow" Height="450" Width="800">
+        Title="AddEditBookWindow" Height="450" Width="500">
     <Grid Margin="20">
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
@@ -332,23 +334,21 @@ namespace Librya
         <TextBlock Grid.Row="2" Text="Автор:" Margin="0,0,0,5" FontWeight="Bold"/>
         <TextBox x:Name="TxtAuthor" Grid.Row="3" Margin="0,0,0,15" Height="30"/>
 
-        <TextBlock Grid.Row="5" Text="Год издания:" Margin="1,61,-1,0" FontWeight="Bold" Height="37" VerticalAlignment="Top"/>
-        <TextBox x:Name="TxtYear" Grid.Row="5" Margin="0,80,0,0" Height="30" VerticalAlignment="Top"/>
+        <TextBlock Grid.Row="4" Text="Жанр:" Margin="0,0,0,5" FontWeight="Bold"/>
+        <ComboBox x:Name="TxtGenres" Grid.Row="5" Margin="0,0,0,15" Height="30"/>
 
-        <TextBlock Grid.Row="5" Text="Жанр:" FontWeight="Bold" Height="37" VerticalAlignment="Top"/>
-        <ComboBox x:Name="TxtGenres" Grid.Row="5" Margin="0,20,0,0" Height="30" VerticalAlignment="Top"/>
+        <TextBlock Grid.Row="6" Text="Год издания:" Margin="0,0,0,5" FontWeight="Bold"/>
+        <TextBox x:Name="TxtYear" Grid.Row="7" Margin="0,0,0,15" Height="30"/>
 
-        <TextBlock Grid.Row="5" Text="Цена:" Margin="1,123,-1,0" FontWeight="Bold" Height="37" VerticalAlignment="Top"/>
-        <TextBox x:Name="TxtPrice" Grid.Row="5" Margin="0,146,0,0" Height="30" VerticalAlignment="Top"/>
+        <TextBlock Grid.Row="8" Text="Цена:" Margin="0,0,0,5" FontWeight="Bold"/>
+        <TextBox x:Name="TxtPrice" Grid.Row="9" Margin="0,0,0,15" Height="30"/>
 
-
-        <StackPanel Grid.Row="6" Orientation="Horizontal" HorizontalAlignment="Right">
+        <StackPanel Grid.Row="10" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,20,0,0">
             <Button x:Name="BtnSave" Content="Сохранить" Width="100" Height="30" 
                     Margin="0,0,10,0" Click="BtnSave_Click" Background="#4CAF50" Foreground="White"/>
             <Button x:Name="BtnCancel" Content="Отмена" Width="100" Height="30" 
                     Click="BtnCancel_Click" Background="#9E9E9E" Foreground="White"/>
         </StackPanel>
-
     </Grid>
 </Window>
 
@@ -386,6 +386,7 @@ namespace Librya
             InitializeComponent();
             _db = db;
             
+            LoadGenres();
 
             if (book != null)
             {
@@ -402,66 +403,116 @@ namespace Librya
             }
         }
 
+        private void LoadGenres()
+        {
+            try
+            {
+                var genres = _db.Genres
+                    .Where(g => g.Name != null)
+                    .Select(g => g.Name)
+                    .ToList();
+                
+                TxtGenres.ItemsSource = genres;
+                
+                if (genres.Any())
+                    TxtGenres.SelectedIndex = 0;
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Ошибка загрузки жанров: {ex.Message}", "Ошибка", 
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
         private void LoadBookData()
         {
             TxtTitle.Text = _book.Title;
             TxtAuthor.Text = _book.Author;
             TxtYear.Text = _book.YearOfPublication.ToString();
+            TxtPrice.Text = _book.Price.ToString();
+            
+            // Выбираем жанр книги
+            if (_book.Genres != null && !string.IsNullOrEmpty(_book.Genres.Name))
+            {
+                TxtGenres.SelectedItem = _book.Genres.Name;
+            }
         }
 
         private void BtnSave_Click(object sender, RoutedEventArgs e)
         {
+            // Проверка названия
             if (string.IsNullOrWhiteSpace(TxtTitle.Text))
             {
-                MessageBox.Show("Введите название книги!", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBox.Show("Введите название книги!", "Ошибка", 
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
 
+            // Проверка автора
             if (string.IsNullOrWhiteSpace(TxtAuthor.Text))
             {
-                MessageBox.Show("Введите автора книги!", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBox.Show("Введите автора книги!", "Ошибка", 
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
 
+            // Проверка года издания
             if (!int.TryParse(TxtYear.Text, out int year) || year < 0 || year > DateTime.Now.Year)
             {
-                MessageBox.Show($"Введите корректный год издания (от 0 до {DateTime.Now.Year})!", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBox.Show($"Введите корректный год издания (от 0 до {DateTime.Now.Year})!", 
+                    "Ошибка", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
-            IEnumerable<Books> filterList = _db.Books.Include("Genres").ToList();
 
-            if (TxtGenres.SelectedItem != null)
+            // Проверка цены
+            if (!decimal.TryParse(TxtPrice.Text, out decimal price) || price < 0)
             {
-                if (TxtGenres.SelectedItem is string selectedGenre)
-                {
-                    if (selectedGenre != "Все жанры")
-                    {
-                        filterList = filterList.Where(b => b.Genres != null && b.Genres.Name == selectedGenre);
-                    }
-                }
+                MessageBox.Show("Введите корректную цену (положительное число)!", 
+                    "Ошибка", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            // Проверка выбора жанра
+            if (TxtGenres.SelectedItem == null)
+            {
+                MessageBox.Show("Выберите жанр книги!", "Ошибка", 
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
             }
 
             try
             {
+                string selectedGenreName = TxtGenres.SelectedItem.ToString();
+                var genre = _db.Genres.FirstOrDefault(g => g.Name == selectedGenreName);
+                
+                if (genre == null)
+                {
+                    MessageBox.Show("Выбранный жанр не найден в базе данных!", "Ошибка", 
+                        MessageBoxButton.OK, MessageBoxImage.Error);
+                    return;
+                }
+
                 if (!_isEditMode)
                 {
+                    // Добавление новой книги
                     _book.Title = TxtTitle.Text;
                     _book.Author = TxtAuthor.Text;
                     _book.YearOfPublication = year;
-
-                    var defaultGenre = _db.Genres.FirstOrDefault();
-                    if (defaultGenre != null)
-                    {
-                        _book.Genres = defaultGenre;
-                    }
+                    _book.Price = price;
+                    _book.Genres = genre;
+                    _book.GenreId = genre.Id;
 
                     _db.Books.Add(_book);
                 }
                 else
                 {
+                    // Редактирование существующей книги
                     _book.Title = TxtTitle.Text;
                     _book.Author = TxtAuthor.Text;
                     _book.YearOfPublication = year;
+                    _book.Price = price;
+                    _book.Genres = genre;
+                    _book.GenreId = genre.Id;
                 }
 
                 _db.SaveChanges();
@@ -470,7 +521,8 @@ namespace Librya
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Ошибка при сохранении: {ex.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show($"Ошибка при сохранении: {ex.Message}", "Ошибка", 
+                    MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
